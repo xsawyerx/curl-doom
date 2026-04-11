@@ -28,8 +28,7 @@ the one-liner.
 ### 2. The masochistic way: pure `curl`, no shell loop
 
 ```bash
-stty -echo -icanon min 1 time 0 \
-  && curl -sN -X POST -T - localhost:3000/play
+stty -echo -icanon min 1 time 0 && curl -sN -X POST -T - localhost:3000/play
 ```
 
 * Default small screen. See below to set columns and rows.
