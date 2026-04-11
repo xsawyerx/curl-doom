@@ -231,6 +231,14 @@ All routes accept `?cols=N&rows=N` to override the rendered viewport.
   the abstraction that lets me swap in a custom rendering backend.
 - **`doom1.wad`**: the shareware episode, freely distributable.
 
+## Commit history
+
+The commit history is rather short and non-descriptive. This is because
+I rewrote the history due to embarrassing C mistakes, terrible JS, and
+embarrassing typos.
+
+This did take a while to do...
+
 ## Why?
 
 Because DOOM.
