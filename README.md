@@ -7,6 +7,8 @@ terminal over HTTP with cURL.
 
 No install, no dependencies except `curl` and `bash`.
 
+![Example with curl and bash](images/curl-bash-tiny.gif)
+
 ## Two ways to play
 
 ### 1. The friendly way: `curl | bash`
@@ -35,6 +37,8 @@ stty -echo -icanon min 1 time 0 && curl -sN -X POST -T - localhost:3000/play
 * Press any key to start playing.
 * Ctrl+C to quit. 'q' doesn't work here.
 * `reset` to fix your terminal back.
+
+![Example with curl alone](images/curl-only-tiny.gif)
 
 If you don't want to use the default small screen here, set the columns
 and rows:
