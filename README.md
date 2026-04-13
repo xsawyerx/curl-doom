@@ -24,8 +24,7 @@ GET `/` is content-negotiated: a `curl` gets back `play.sh` with
 runs the per-keystroke `/tick` loop, handles `stty`, the alternate screen,
 the cursor, and cleanup.
 
-A browser hitting the same URL gets a tiny landing page that just shows
-the one-liner.
+When you browse in, you'll see the one-liner instructions.
 
 ### 2. The masochistic way: pure `curl`, no shell loop
 
