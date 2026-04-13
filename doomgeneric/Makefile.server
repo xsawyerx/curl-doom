@@ -41,6 +41,10 @@ $(OBJS): | $(OBJDIR)
 $(OBJDIR):
 	mkdir -p $(OBJDIR)
 
-$(OBJDIR)/%.o: %.c
+$(OBJDIR)/%.o: doomgeneric/doomgeneric/%.c
+	@echo [Compiling $<]
+	$(CC) $(CFLAGS) -c $< -o $@
+
+$(OBJDIR)/doomgeneric_server.o: doomgeneric_server.c
 	@echo [Compiling $<]
 	$(CC) $(CFLAGS) -c $< -o $@
