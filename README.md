@@ -51,7 +51,7 @@ request body, ANSI frames come down the response body. No key-loop
 wrapper, no per-keystroke round-trip. This is Just a single TCP connection
 doing both halves at once.
 
-The catch: the shell normally puts the terminal in **cooked mode**,
+The catch: the shell normally puts the terminal in **canonical mode**,
 which (a) line-buffers stdin so curl doesn't see a key until you hit
 Enter, and (b) echoes everything you type on top of the frames. So you
 have to flip the terminal into raw mode first, and put it back when
