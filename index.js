@@ -9,7 +9,7 @@ const { spawn } = require('child_process');
 const app = express();
 
 const PORT = process.env.PORT || 3000;
-const DOOM_BIN = path.join(__dirname, 'doomgeneric', 'doomgeneric', 'doomgeneric_server');
+const DOOM_BIN = path.join(__dirname, 'doomgeneric', 'doomgeneric_server');
 const WAD = path.join(__dirname, 'doom1.wad');
 
 // doomgeneric renders at 640×400 RGBA (little-endian 0xAARRGGBB, so the

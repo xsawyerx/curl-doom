@@ -19,7 +19,7 @@
 // to doomgeneric_Tick(), regardless of wall-clock time. This lets us run
 // tics as fast as we like, or not at all, without the engine drifting.
 
-#include "doomgeneric.h"
+#include "doomgeneric/doomgeneric/doomgeneric.h"
 
 #include <errno.h>
 #include <stdint.h>

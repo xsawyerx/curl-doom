@@ -154,7 +154,10 @@ This is only for hosting the game, not playing it.
 npm install
 
 # 2. Build the headless doom binary (once)
-cd doomgeneric/doomgeneric && make -f Makefile.server && cd ../..
+cd doomgeneric
+git clone git@github.com:ozkl/doomgeneric.git
+make -f Makefile.server
+cd ..
 
 # 3. Start the server
 npm start
