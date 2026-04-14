@@ -169,6 +169,13 @@ The code assumes on `doom1.wad` (the freely-distributed shareware
 episode). To use a different WAD, drop it in the project root and edit
 the `WAD` constant in `index.js`.
 
+### Build & run (using Docker or containerd)
+
+```bash
+docker build -t curl-doom .
+docker run --rm -p 3000:3000 --name "curl-doom" curl-doom 
+```
+
 ## Controls
 
 | Key           | Action                   |
