@@ -9,6 +9,12 @@ const { spawn } = require('child_process');
 const app = express();
 
 const PORT = process.env.PORT || 3000;
+
+// Simple timestamped logger.
+function log(tag, msg) {
+  const ts = new Date().toISOString();
+  console.log(`[${ts}] [${tag}] ${msg}`);
+}
 const DOOM_BIN = path.join(__dirname, 'doomgeneric', 'doomgeneric_server');
 const WAD = path.join(__dirname, 'doom1.wad');
 
@@ -107,24 +113,37 @@ function spawnDoom() {
   // onto fd 1 anyway), [2]=stderr pipe, [3]=frame pipe.
   // -warp 1 1 -skill 3 jumps straight into E1M1 on "Hurt me plenty",
   // skipping the title screen and menu dance.
+  if (!DOOM_BIN) {
+    throw new Error('DOOM_BIN path is not set');
+  }
   const proc = spawn(DOOM_BIN, ['-iwad', WAD, '-warp', '1', '1', '-skill', '3'], {
     stdio: ['pipe', 'inherit', 'pipe', 'pipe'],
     cwd: __dirname,
   });
   // Drain stderr so the pipe doesn't fill and block doom.
-  proc.stderr.on('data', () => {});
+  proc.stderr.on('data', (data) => {
+    log('doom:stderr', data.toString().trimEnd());
+  });
   return proc;
 }
 
 function createSession() {
   const id = crypto.randomBytes(8).toString('hex');
-  const proc = spawnDoom();
+  log('session', `creating session ${id}`);
+  let proc;
+  try {
+    proc = spawnDoom();
+  } catch (err) {
+    log('session', `failed to spawn doom for session ${id}: ${err.message}`);
+    throw err;
+  }
 
   const session = {
     id,
     proc,
     frameStream: proc.stdio[3],
-    frameBuf: Buffer.alloc(0),
+    frameBuf: Buffer.alloc(FRAME_SIZE * 2),
+    frameBufLen: 0,
     pending: [],
     busy: null,
     lastActive: Date.now(),
@@ -132,19 +151,27 @@ function createSession() {
   };
 
   session.frameStream.on('data', chunk => {
-    session.frameBuf = Buffer.concat([session.frameBuf, chunk]);
-    while (session.frameBuf.length >= FRAME_SIZE && session.pending.length) {
-      const frame = session.frameBuf.subarray(0, FRAME_SIZE);
-      session.frameBuf = session.frameBuf.subarray(FRAME_SIZE);
+    // Grow the buffer if needed (shouldn't happen normally).
+    if (session.frameBufLen + chunk.length > session.frameBuf.length) {
+      const newBuf = Buffer.alloc(session.frameBuf.length + chunk.length + FRAME_SIZE);
+      session.frameBuf.copy(newBuf, 0, 0, session.frameBufLen);
+      session.frameBuf = newBuf;
+    }
+    chunk.copy(session.frameBuf, session.frameBufLen);
+    session.frameBufLen += chunk.length;
+    while (session.frameBufLen >= FRAME_SIZE && session.pending.length) {
+      const frame = Buffer.from(session.frameBuf.subarray(0, FRAME_SIZE));
+      session.frameBuf.copyWithin(0, FRAME_SIZE, session.frameBufLen);
+      session.frameBufLen -= FRAME_SIZE;
       const waiter = session.pending.shift();
-      // Copy so subsequent reads into the shared buffer can't race.
-      waiter.resolve(Buffer.from(frame));
+      waiter.resolve(frame);
     }
   });
 
   const markDead = (reason) => {
     if (session.dead) return;
     session.dead = true;
+    log('session', `session ${id} died: ${reason}`);
     for (const w of session.pending) w.reject(new Error(reason));
     session.pending.length = 0;
     sessions.delete(id);
@@ -160,6 +187,7 @@ function createSession() {
 
 function destroySession(session, reason = 'reaped') {
   if (session.dead) return;
+  log('session', `destroying session ${session.id}: ${reason}`);
   session.dead = true;
   try { session.proc.stdin.write('Q\n'); } catch {}
   try { session.proc.kill('SIGTERM'); } catch {}
@@ -176,7 +204,10 @@ function destroySession(session, reason = 'reaped') {
 setInterval(() => {
   const cutoff = Date.now() - IDLE_TIMEOUT_MS;
   for (const s of sessions.values()) {
-    if (s.lastActive < cutoff) destroySession(s, 'idle timeout');
+    if (s.lastActive < cutoff) {
+      log('reaper', `reaping idle session ${s.id} (last active ${Math.round((Date.now() - s.lastActive) / 1000)}s ago)`);
+      destroySession(s, 'idle timeout');
+    }
   }
 }, REAP_INTERVAL_MS).unref();
 
@@ -212,7 +243,9 @@ async function step(session, doomKey) {
   // Otherwise a settled promise would leave us spinning forever.
   while (session.busy) {
     const prev = session.busy;
-    try { await prev; } catch {}
+    try { await prev; } catch (e) {
+      log('step', `previous step failed for session ${session.id}: ${e.message}`);
+    }
     if (session.busy === prev) session.busy = null;
   }
 
@@ -270,7 +303,7 @@ function frameToAnsi(fb, cols, rows) {
   const xScale = DOOM_W / cols;
   const yScale = DOOM_H / pxH;
 
-  let out = HOME + HIDE_CURSOR;
+  const parts = [HOME, HIDE_CURSOR];
   let prevTop = null, prevBot = null;
 
   for (let row = 0; row < rows; row++) {
@@ -283,19 +316,19 @@ function frameToAnsi(fb, cols, rows) {
 
       // Emit SGR only when color changes, shrinks the response ~5×.
       if (prevTop === null || tr !== prevTop[0] || tg !== prevTop[1] || tb !== prevTop[2]) {
-        out += `\x1b[38;2;${clamp(tr)};${clamp(tg)};${clamp(tb)}m`;
+        parts.push(`\x1b[38;2;${clamp(tr)};${clamp(tg)};${clamp(tb)}m`);
         prevTop = [tr, tg, tb];
       }
       if (prevBot === null || br !== prevBot[0] || bg !== prevBot[1] || bb !== prevBot[2]) {
-        out += `\x1b[48;2;${clamp(br)};${clamp(bg)};${clamp(bb)}m`;
+        parts.push(`\x1b[48;2;${clamp(br)};${clamp(bg)};${clamp(bb)}m`);
         prevBot = [br, bg, bb];
       }
-      out += '\u2580'; // ▀
+      parts.push('\u2580'); // ▀
     }
-    out += RESET + '\n';
+    parts.push(RESET, '\n');
     prevTop = prevBot = null;
   }
-  return out;
+  return parts.join('');
 }
 
 // HTTP
@@ -326,8 +359,11 @@ app.post('/new', async (req, res) => {
     // First frame clears the screen; subsequent /tick frames just home.
     res.send(CLEAR + frameToAnsi(fb, cols, rows));
   } catch (err) {
+    log('new', `failed to create session: ${err.message}`);
     if (session) destroySession(session, 'new failed');
-    res.status(500).send(`Failed to start doom: ${err.message}\n`);
+    // Sanitize: don't leak internal filesystem paths to the client.
+    const safeMsg = err.message.replace(/\/[^\s]*/g, '<path>');
+    res.status(500).send(`Failed to start doom: ${safeMsg}\n`);
   }
 });
 
@@ -350,6 +386,7 @@ app.post('/tick', async (req, res) => {
     res.setHeader('Content-Type', 'text/plain; charset=utf-8');
     res.send(frameToAnsi(fb, cols, rows));
   } catch (err) {
+    log('tick', `tick failed for session ${id}: ${err.message}`);
     res.status(500).send(`Tick failed: ${err.message}\n`);
   }
 });
@@ -431,7 +468,9 @@ app.post('/play', async (req, res) => {
   try {
     session = createSession();
   } catch (err) {
-    res.status(500).send(`Failed to start doom: ${err.message}\n`);
+    log('play', `failed to create session: ${err.message}`);
+    const safeMsg = err.message.replace(/\/[^\s]*/g, '<path>');
+    res.status(500).send(`Failed to start doom: ${safeMsg}\n`);
     return;
   }
 
@@ -478,6 +517,8 @@ app.post('/play', async (req, res) => {
     req.socket.removeListener('close', onClientGone);
     for (const t of heldTimers.values()) clearTimeout(t);
     heldTimers.clear();
+    clearEscTimer();
+    escState = 0;
     destroySession(session, reason || 'play closed');
     try { res.end(); } catch {}
   };
@@ -606,9 +647,19 @@ function sleep(ms) {
 }
 
 app.listen(PORT, () => {
-  console.log(`cURL DOOM running on http://localhost:${PORT}`);
-  console.log(`doom binary: ${DOOM_BIN}`);
-  console.log(`WAD:         ${WAD}`);
-  console.log(`Play with:   curl -sL http://localhost:${PORT} | bash`);
-  console.log(`         or: ./doom.sh`);
+  log('server', `cURL DOOM running on http://localhost:${PORT}`);
+  log('server', `doom binary: ${DOOM_BIN}`);
+  log('server', `WAD:         ${WAD}`);
+  log('server', `Play with:   curl -sL http://localhost:${PORT} | bash`);
+  log('server', `         or: ./doom.sh`);
+
+  // Warn early if the doom binary or WAD are missing.
+  if (!fs.existsSync(DOOM_BIN)) {
+    log('server', `WARNING: doom binary not found at ${DOOM_BIN}`);
+    log('server', 'Build it with: cd doomgeneric && make -f Makefile.server');
+  }
+  if (!fs.existsSync(WAD)) {
+    log('server', `WARNING: WAD file not found at ${WAD}`);
+    log('server', 'Download doom1.wad and place it in the project root.');
+  }
 });
