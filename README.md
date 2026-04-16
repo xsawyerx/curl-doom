@@ -155,7 +155,7 @@ npm install
 
 # 2. Build the headless doom binary (once)
 cd doomgeneric
-git clone git@github.com:ozkl/doomgeneric.git
+git clone https://github.com/ozkl/doomgeneric.git
 make -f Makefile.server
 cd ..
 
